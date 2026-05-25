@@ -1,0 +1,49 @@
+==== GAP FIXES VERIFIED — 2026-05-25 ====
+
+Gap #1: pytest auto-marker plugin (Oracle B5.3 fix)
+  Before: brittle substring match on nodeid; ~50% of tests uncategorized
+  After:  shared/helpers/markers.py auto-applies @pytest.mark.format/state
+  Tier2 verification (38 tests):
+    format=23  state=35  both=22  uncategorized=2 (pure exit-code tests)
+
+Gap #2: harbor pinned in requirements-dev.txt
+  Added: harbor>=0.8.0,<0.9.0
+
+Gap #3: README tier3 train count drift  
+  Was 50 (planning artifact). Fixed to actual 48.
+
+Gap #4: ci/extract_reward_vector.py
+  Projects reward.json's t_* keys → ndjson/csv/tsv for PRM training pipelines
+
+Gap #5: tools/test_tinker_compat.py
+  Verifies all 3 tiers structurally compatible with HarborTask dataclass
+  Run output:
+    Using LOCAL-MOCK HarborTask
+    PASS  tier1  name=akashdex/aws-cli-s3-tier1  instruction=6928B  toml-keys=6
+    PASS  tier2  name=akashdex/aws-cli-s3-tier2  instruction=7710B  toml-keys=6
+    PASS  tier3  name=akashdex/aws-cli-s3-tier3  instruction=9063B  toml-keys=6
+    PASS: all 3 tiers structurally compatible with Tinker HarborTask
+
+Gap #6: tools/preflight_calibrate.sh
+  Runs subset of tier tests against oracle to estimate difficulty band BEFORE
+  committing frontier compute budget
+
+Gap #7: CI workflow extended
+  ci/github-actions.yml now runs tinker-compat and reward-vector smoke tests
+
+==== POST-FIX E2E VERIFICATION (12/12 combos) ====
+ORACLE STANDARD tier1: PASS 1.0000
+ORACLE STANDARD tier2: PASS 1.0000
+ORACLE STANDARD tier3: PASS 1.0000
+ORACLE MITM     tier1: PASS 1.0000
+ORACLE MITM     tier2: PASS 1.0000
+ORACLE MITM     tier3: PASS 1.0000
+NULL   STANDARD tier1: PASS 0.0000
+NULL   STANDARD tier2: PASS 0.0000
+NULL   STANDARD tier3: PASS 0.0000
+NULL   MITM     tier1: PASS 0.0000
+NULL   MITM     tier2: PASS 0.0000
+NULL   MITM     tier3: PASS 0.0000
+
+Host unit tests:  23/23 passed
+Smoke test:       all checks passed (94 files, syntax + schema + leakage)

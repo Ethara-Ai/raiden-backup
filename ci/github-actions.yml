@@ -1,0 +1,154 @@
+name: aws-cli-s3 RL env CI
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Harbor v0.8.x
+        run: pip install "harbor>=0.8.0,<0.9.0"
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Smoke checks (static + lint)
+        run: bash tools/smoke_test.sh
+
+      - name: Helper unit tests
+        run: python -m pytest tools/test_helpers.py -v
+
+      - name: Tinker HarborTask structural compatibility
+        run: python tools/test_tinker_compat.py
+
+      - name: Reward vector extractor smoke
+        run: |
+          mkdir -p /tmp/rv-ci
+          cat > /tmp/rv-ci/reward.json <<'EOF'
+          {"reward": 0.9, "train_reward": 0.9, "t_x": 1.0, "t_y": 0.0}
+          EOF
+          python ci/extract_reward_vector.py /tmp/rv-ci/reward.json --format ndjson
+          python ci/extract_reward_vector.py /tmp/rv-ci/reward.json --format csv --include-meta
+
+      - name: Null agent import smoke
+        run: python -c "from agents.null_agent.agent import NullAgent; print(NullAgent.name())"
+
+      - name: Validate task.toml schemas
+        run: |
+          python ci/validate_task_toml.py tier1/task.toml
+          python ci/validate_task_toml.py tier2/task.toml
+          python ci/validate_task_toml.py tier3/task.toml
+
+      - name: Check Dockerfile leakage
+        run: bash ci/check_dockerfile_leakage.sh
+
+      - name: Check instruction.md leakage
+        run: bash ci/check_instruction_leakage.sh
+
+      - name: Check test split
+        run: python ci/check_test_split.py
+
+      - name: Build shared base image
+        run: bash tools/build_shared_image.sh
+
+      - name: Build tier images
+        run: |
+          docker build -f tier1/environment/Dockerfile -t aws-cli-s3-tier1:ci tier1/
+          docker build -f tier2/environment/Dockerfile -t aws-cli-s3-tier2:ci tier2/
+          docker build -f tier3/environment/Dockerfile -t aws-cli-s3-tier3:ci tier3/
+
+      - name: Oracle pass tier1
+        run: |
+          harbor run -p tier1 -a oracle --env docker -o ./out/oracle-t1 -k 1
+          result=$(python ci/walk_jobs_dir.py ./out/oracle-t1)
+          python ci/assert_reward.py "$result" --min 0.98 --metric reward
+
+      - name: Oracle pass tier2
+        run: |
+          harbor run -p tier2 -a oracle --env docker -o ./out/oracle-t2 -k 1
+          result=$(python ci/walk_jobs_dir.py ./out/oracle-t2)
+          python ci/assert_reward.py "$result" --min 0.98 --metric reward
+
+      - name: Oracle pass tier3
+        run: |
+          harbor run -p tier3 -a oracle --env docker -o ./out/oracle-t3 -k 1
+          result=$(python ci/walk_jobs_dir.py ./out/oracle-t3)
+          python ci/assert_reward.py "$result" --min 0.98 --metric reward
+
+      - name: Null pass tier1
+        run: |
+          harbor run -p tier1 --agent-import-path agents.null_agent.agent:NullAgent \
+              --env docker -o ./out/null-t1 -k 1
+          result=$(python ci/walk_jobs_dir.py ./out/null-t1)
+          python ci/assert_reward.py "$result" --max 0.05 --metric reward
+
+      - name: Null pass tier2
+        run: |
+          harbor run -p tier2 --agent-import-path agents.null_agent.agent:NullAgent \
+              --env docker -o ./out/null-t2 -k 1
+          result=$(python ci/walk_jobs_dir.py ./out/null-t2)
+          python ci/assert_reward.py "$result" --max 0.05 --metric reward
+
+      - name: Null pass tier3
+        run: |
+          harbor run -p tier3 --agent-import-path agents.null_agent.agent:NullAgent \
+              --env docker -o ./out/null-t3 -k 1
+          result=$(python ci/walk_jobs_dir.py ./out/null-t3)
+          python ci/assert_reward.py "$result" --max 0.05 --metric reward
+
+      - name: Build shared MITM image
+        run: bash tools/build_shared_image.sh --mitm
+
+      - name: MITM oracle pass tier1
+        run: S3RL_IMAGE_VARIANT=mitm bash tools/test_oracle_local.sh tier1
+
+      - name: MITM oracle pass tier2
+        run: S3RL_IMAGE_VARIANT=mitm bash tools/test_oracle_local.sh tier2
+
+      - name: MITM oracle pass tier3
+        run: S3RL_IMAGE_VARIANT=mitm bash tools/test_oracle_local.sh tier3
+
+      - name: MITM null pass tier1
+        run: S3RL_IMAGE_VARIANT=mitm bash tools/test_null_local.sh tier1
+
+      - name: MITM null pass tier2
+        run: S3RL_IMAGE_VARIANT=mitm bash tools/test_null_local.sh tier2
+
+      - name: MITM null pass tier3
+        run: S3RL_IMAGE_VARIANT=mitm bash tools/test_null_local.sh tier3
+
+  multi-arch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Multi-arch build (standard, amd64+arm64)
+        run: |
+          docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target standard \
+              -f shared/Dockerfile \
+              -t aws-cli-s3-shared:0.3.0 \
+              .
+
+      - name: Multi-arch build (mitm, amd64+arm64)
+        run: |
+          docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target mitm \
+              -f shared/Dockerfile \
+              -t aws-cli-s3-shared:mitm-0.3.0 \
+              .

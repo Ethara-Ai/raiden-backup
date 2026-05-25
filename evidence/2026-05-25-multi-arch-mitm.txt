@@ -1,0 +1,38 @@
+==== EVIDENCE CAPTURE: 12 e2e combos + 2 multi-arch builds ====
+
+Standard image: linux/arm64 native (host: Apple Silicon)
+[aws-cli-s3-shared:0.3.0] linux/arm64 197137103
+[aws-cli-s3-shared:mitm-0.3.0] linux/arm64 224641338
+
+==== E2E RESULTS (this session) ====
+PASS  oracle standard tier1 = 1.0000 (16/16)
+PASS  oracle standard tier2 = 1.0000 (38/38)
+PASS  oracle standard tier3 = 1.0000 (64/64)
+PASS  oracle mitm     tier1 = 1.0000 (16/16)
+PASS  oracle mitm     tier2 = 1.0000 (38/38)
+PASS  oracle mitm     tier3 = 1.0000 (64/64)
+PASS  null   standard tier1 = 0.0000
+PASS  null   standard tier2 = 0.0000
+PASS  null   standard tier3 = 0.0000
+PASS  null   mitm     tier1 = 0.0000
+PASS  null   mitm     tier2 = 0.0000
+PASS  null   mitm     tier3 = 0.0000
+
+==== MULTI-ARCH BUILD VERIFICATION ====
+PASS  buildx --platform linux/amd64,linux/arm64 --target standard
+PASS  buildx --platform linux/amd64,linux/arm64 --target mitm
+
+==== HOST UNIT TESTS ====
+.......................                                                  [100%]
+23 passed in 0.29s
+==== SMOKE TEST ====
+OK: all tiers have train/ and eval/ test dirs populated
+==> Python syntax check on all .py files
+  OK
+==> Bash syntax check on all .sh files
+  OK
+==> Test count summary
+  tier1: train=12 eval=4
+  tier2: train=28 eval=10
+  tier3: train=48 eval=16
+==> All smoke checks passed
